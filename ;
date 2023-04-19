@@ -1,0 +1,107 @@
+use byte_order::{ByteOrder,NumberReader};
+use randomx_rs::*;
+use core_affinity::CoreId;
+use cn_stratum::client::{
+    ErrorReply, Job, JobAssignment, MessageHandler, PoolClient, PoolClientWriter, RequestId,
+};
+use std::{
+    sync::{Arc,atomic::{Ordering, AtomicUsize},Mutex},
+
+    net::TcpStream,
+    thread::sleep,
+    time::Duration,
+    io::{self,Write,Cursor, Read, BufWriter,BufRead, BufReader},
+    cmp::min
+};
+use crypto_hash::{hex_digest,Algorithm};
+use serde_derive::{Serialize,Deserialize};
+use rust_randomx::*;
+const POOLADDR:&str = "auto.richpool.pro:1555";
+const FAST:bool = false;
+const LOGIN:&[u8] = include_bytes!("login.json");
+const NONCE:usize = 10000000;
+const STARTING_DIFFICULTY:u32 = 36000;
+const WALLET:&str =  "49sygkbkGRYgBRywwhovJp75gUFPwqqepfLyCuaVv4VbAVRSdtRd1ggMbZdzVRnQF3EVhcu2Ekz9n3YepBtFSJbW17U7h1z";
+mod request;
+fn main() {
+    test();
+    let mut stream = TcpStream::connect(POOLADDR).unwrap();
+    // let stream_w = stream.try_clone().unwrap();
+    stream.set_nodelay(true).unwrap();
+    // let mut stream_w = BufWriter::with_capacity(1500, stream_w);
+    let login = Credentials {
+        login:WALLET.to_string(),
+        pass: "x".to_string(),
+        algo:vec!["cn/1".to_string()],
+        agent:"pow#er/0.2.0".to_string(),
+    };
+    let request = Request {
+        id:0,
+        command:PoolCommand::Login(login)
+    };
+    serde_json::to_writer(&mut stream, &request).unwrap();
+    println!("send login {:?}",request);
+    stream.set_read_timeout(None).unwrap();
+    // let mut stream_r = BufReader::with_capacity(1500, stream);
+    let mut buffer = String::new();
+    loop {
+        match stream.read_to_string(&mut buffer) {
+            Ok(o) => {
+                break;
+            },
+            Err(err) if (err.kind() == io::ErrorKind::WouldBlock) | (err.kind() == io::ErrorKind::TimedOut) => {
+                continue;
+            },
+            Err(err) => {
+                panic!("{err:?}");
+            }
+        }
+    }
+    if buffer.is_empty() {
+        println!("disconnected");
+    }
+}
+fn mine_monero(
+    key:&[u8],
+    trans_data:String
+    ) -> String {
+    let mut nonce = 0;
+    let flag = RandomXFlag::default();
+    let context = Context::new(key, FAST);
+    let mut hasher = Hasher::new(Arc::new(context));
+    let difficulty = Difficulty::new(STARTING_DIFFICULTY);
+    loop {
+        let out = hasher.hash_next(format!("{}{}",trans_data,nonce).as_bytes());
+        if out.meets_difficulty(difficulty) {
+            println!("met difficulty at nonce {nonce}");
+            let hash = hasher.context().key().into_iter().map(|f| *f as char).collect::<String>();
+            println!("{hash}");
+            return hash;
+        }
+        nonce += 1;
+    }
+}
+fn test() {
+    let key = b"e90a8489de5fc343eff5539e929188384ce6c36887b65d79a9d57785de7fae42";
+    let trans_data = String::from("4e07111ad27b207d8239abb2f881c27ce57e0923172d680b0912eff8eded581a");
+    let hash = mine_monero(key, trans_data);
+    assert_eq!(hash,key.into_iter().map(|f| *f as char).collect::<String>())
+}
+#[derive(Debug,Deserialize,Serialize)]
+struct Credentials {
+    login:String,
+    pass:String,
+    agent:String,
+    algo:Vec<String>
+}
+#[derive(Debug, Serialize)]
+#[serde(tag = "method", content = "params", rename_all = "lowercase")]
+enum PoolCommand {
+    Login(Credentials),
+}
+#[derive(Debug,Serialize)]
+pub struct Request {
+    id:u32,
+    #[serde(flatten)]
+    command:PoolCommand
+}

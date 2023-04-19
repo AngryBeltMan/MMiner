@@ -1,0 +1,48 @@
+fn mine_loop(block_number:u64,transaction:u64,prev_hash:String) -> Option<Submit> {
+    let mut lowest = u64::MAX;
+    let mut lowest_block = String::new();
+    let context = Context::new(prev_hash.as_bytes(), false);
+    let hasher = Hasher::new(std::sync::Arc::new(context));
+    for nonce in 0..NONCE {
+        let base_text = format!("{}{}{}{}",block_number,transaction,prev_hash,nonce);
+        let new_block = hex_digest(Algorithm::SHA256,base_text/*[24..]*/.as_bytes());
+        let out = hasher.hash(new_block.as_bytes());
+        let n = NumberReader::new(Cursor::new(new_block.as_bytes())).read_u64().unwrap();
+        if out.meets_difficulty(Difficulty::new(STARTING_DIFFICULTY as u32)) {
+            let submit = Submit {
+                method:String::from("submit"),
+                params:Params {
+                    id: String::from("null"),
+                    job_id: String::from("null"),
+                    nonce: nonce.to_string(),
+                    result: new_block
+                },
+                id:1
+            };
+            println!("found new hash {}",out.leading_zeros());
+            println!("Nonce {}",nonce);
+            return Some(submit);
+        } else if lowest as u32 > out.leading_zeros() {
+            println!("new low found {n}");
+            lowest = n;
+            lowest_block = new_block;
+        }
+    }
+    println!("could not find hash lowest was:{}",lowest);
+    println!("lowest block was {}",lowest_block);
+    None
+}
+
+#[derive(Debug,Deserialize,Serialize)]
+struct Submit {
+    method:String,
+    params: Params,
+    id:u32
+}
+#[derive(Debug,Deserialize,Serialize)]
+struct Params {
+    id:String,
+    job_id:String,
+    nonce:String,
+    result:String
+}
