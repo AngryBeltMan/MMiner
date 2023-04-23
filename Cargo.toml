@@ -6,15 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-byte-order = "0.3.0"
+arrayvec = { version = "0.7.2", features = ["serde"] }
+blake2b_simd = "1.0.1"
 byte_string = "1.0.0"
+byteorder = "1.4.3"
 core_affinity = "0.8.0"
 crypto-hash = "0.3.4"
 hex = "0.4.3"
 randomx-rs = "1.1.9"
 randomx4r = "0.2.1"
-rust-randomx = "0.7.2"
 serde = "1.0.160"
 serde_derive = "1.0.160"
 serde_json = "1.0.96"
+strum = {version = "0.24.1", features = ["derive"]}
 tokio = { version = "1.27.0", features = ["full"] }
+rust-randomx = {path = "./rust-randomx"}
+rust-argon2 = { git = "https://github.com/Ragnaroek/rust-argon2" }
