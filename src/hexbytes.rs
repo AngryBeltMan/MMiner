@@ -34,7 +34,7 @@ where
     serializer.serialize_str(&buffer_to_hex_string(buffer))
 }
 
-pub fn byte32_to_hex<S>(buffer: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
+pub fn byte32_to_hex<S>(buffer: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
