@@ -8,8 +8,7 @@ use std::arch::x86_64::{
 };
 
 use self::argon2::block::Block;
-
-// use crate::byte_string;
+use crate::hexbytes::hex2;
 use super::superscalar::{Blake2Generator, ScProgram};
 
 const RANDOMX_ARGON_LANES: u32 = 1;
@@ -141,7 +140,7 @@ impl VmMemoryAllocator {
     pub fn reallocate(&mut self, seed: String) {
         if seed != self.vm_memory_seed {
             let mem_init_start = Instant::now();
-            self.vm_memory = Arc::new(VmMemory::full(&crate::hex2(&seed)));
+            self.vm_memory = Arc::new(VmMemory::full(&hex2(&seed)));
             self.vm_memory_seed = seed;
             println!(
                 "memory init took {}ms with seed_hash: {}",

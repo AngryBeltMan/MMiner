@@ -10,14 +10,14 @@ pub struct Block {
     pub error:Option<String>,
     pub result:BlockResult,
 }
-#[derive(Debug,Deserialize,Serialize)]
+#[derive(Debug,Deserialize,Serialize,Clone)]
 pub struct JobBlock {
     pub jsonrpc:String,
     pub error:Option<String>,
     pub params:JobBlockResult,
 }
 
-#[derive(Debug,Deserialize,Serialize)]
+#[derive(Debug,Deserialize,Serialize,Clone)]
 pub struct JobBlockResult {
     pub blob:String,
     pub job_id:String,
