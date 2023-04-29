@@ -149,6 +149,18 @@ impl VmMemoryAllocator {
             );
         }
     }
+    pub fn reallocate_light(&mut self, seed: String) {
+        if seed != self.vm_memory_seed {
+            let mem_init_start = Instant::now();
+            self.vm_memory = Arc::new(VmMemory::light(&hex2(&seed)));
+            self.vm_memory_seed = seed;
+            println!(
+                "memory init took {}ms with seed_hash: {}",
+                mem_init_start.elapsed().as_millis(),
+                self.vm_memory_seed,
+            );
+        }
+    }
 }
 
 pub struct VmMemory {

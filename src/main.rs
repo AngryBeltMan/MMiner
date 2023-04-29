@@ -14,7 +14,8 @@ use std::{
 
 const POOLADDR:&str = "pool.hashvault.pro:80";
 const WALLET:&str =  "49sygkbkGRYgBRywwhovJp75gUFPwqqepfLyCuaVv4VbAVRSdtRd1ggMbZdzVRnQF3EVhcu2Ekz9n3YepBtFSJbW17U7h1z";
-pub const THREADS:usize = 3;
+const THREADS:usize = 3;
+const LIGHTMODE:bool = true;
 mod block;
 mod request;
 mod hexbytes;
@@ -108,7 +109,11 @@ fn main() {
             }
             match serde_json::from_str::<block::JobBlock>(&buffer) {
                 Ok(block) => {
-                    vm_mem_alloc.reallocate(block.params.seed_hash.clone());
+                    if LIGHTMODE {
+                        vm_mem_alloc.reallocate_light(block.params.seed_hash.clone());
+                    } else {
+                        vm_mem_alloc.reallocate(block.params.seed_hash.clone());
+                    }
                     println!("new job");
                     for _ in 0..THREADS {
                         if sender.send((block.clone().to_block(),Arc::clone(&vm_mem_alloc.vm_memory))).is_ok() { } else { println!("couldn't send") }
@@ -169,24 +174,24 @@ pub fn keep_alive(stream:Arc<mpsc::UnboundedSender<request::MessageType>>,id:&st
     let keep_alive = request::KeepAlive { id:id.to_string() };
     stream.send(request::MessageType::KeepAlive(keep_alive)).unwrap();
 }
-
 #[test]
-fn randomx_test() {
-    use rust_randomx::*;
-    let key = b"hello key";
-    let blob = b"blobby blob blob";
-    let blob2 = b"ifjeojoijlfdslk";
-    let memory = VmMemory::light(key);
-    let mut vm = new_vm(memory.into());
-    let hash_result1 = vm.calculate_hash(blob).to_hex();
-    let hash_result3 = vm.calculate_hash(blob2).to_hex();
-    let flag = RandomXFlag::default();
-    let memory = RandomXCache::new(flag,key).unwrap();
-    let rx_dataset = RandomXDataset::new(flag, &memory, 0).unwrap();
-    let vm = RandomXVM::new(flag,Some(&memory),Some(&rx_dataset)).unwrap();
-    let hash_result2 = hexbytes::bytes_to_hex(&vm.calculate_hash(blob).unwrap());
-    let hash_result4 = hexbytes::bytes_to_hex(&vm.calculate_hash(blob).unwrap());
-    assert_eq!(hash_result1.to_string(),hash_result2.to_string());
-    assert_eq!(hash_result3.to_string(),hash_result4.to_string());
+fn test() {
+    let seed = "epiccoolseed";
+    let key = hexbytes::string_to_u8_array(seed);
+    let mut vm_mem_alloc = randomx::memory::VmMemoryAllocator::initial();
+    let mem = randomx::memory::VmMemory::light(&key);
+    let memfull = randomx::memory::VmMemory::full(&key);
+    vm_mem_alloc.reallocate(seed.to_string());
+    let mut vm_light = new_vm(mem.into());
+    let mut vm_full = new_vm(memfull.into());
+    let mut vm_alloc = new_vm(vm_mem_alloc.vm_memory.into());
+    for i in 0..=2 {
+        let hash = format!("seed{i}");
+        let light_hash = vm_light.calculate_hash(hash.as_bytes());
+        let full_hash = vm_full.calculate_hash(hash.as_bytes());
+        let alloc_hash = vm_alloc.calculate_hash(hash.as_bytes());
+        assert_eq!(light_hash,full_hash);
+        assert_eq!(light_hash,alloc_hash);
+        assert_eq!(full_hash,alloc_hash);
+    }
 }
-
