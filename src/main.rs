@@ -14,7 +14,7 @@ use std::{
 
 const POOLADDR:&str = "pool.hashvault.pro:80";
 const WALLET:&str =  "49sygkbkGRYgBRywwhovJp75gUFPwqqepfLyCuaVv4VbAVRSdtRd1ggMbZdzVRnQF3EVhcu2Ekz9n3YepBtFSJbW17U7h1z";
-const THREADS:usize = 3;
+const THREADS:usize = 1;
 const LIGHTMODE:bool = false;
 mod block;
 mod request;
