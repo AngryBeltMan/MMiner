@@ -71,15 +71,3 @@ pub struct Job {
     pub seed_hash:String,
     pub motd:String,
 }
-pub fn deserialize_target<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let (mut val, hexlen) = hexbytes::hex64le_to_int(deserializer)?;
-    // unpack compact format
-    // XXX: this is what other miners do. It doesn't seem right...
-    if hexlen <= 8 {
-        val |= val << 0x20;
-    }
-    Ok(val)
-}
