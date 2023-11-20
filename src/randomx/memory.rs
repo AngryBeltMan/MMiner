@@ -1,15 +1,12 @@
 extern crate argon2;
 
+use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use std::arch::x86_64::{
-    _mm_prefetch,
-    _MM_HINT_NTA
-};
 
 use self::argon2::block::Block;
-use crate::hexbytes::hex2;
 use super::superscalar::{Blake2Generator, ScProgram};
+use crate::hexbytes::hex2;
 
 const RANDOMX_ARGON_LANES: u32 = 1;
 const RANDOMX_ARGON_MEMORY: u32 = 262144;
@@ -137,9 +134,10 @@ impl VmMemoryAllocator {
         }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn reallocate(&mut self, seed: String) {
         if seed != self.vm_memory_seed {
-            let mem_init_start = Instant::now();
+            let mem_init_start: Instant = Instant::now();
             self.vm_memory = Arc::new(VmMemory::full(&hex2(&seed)));
             self.vm_memory_seed = seed;
             println!(
@@ -149,6 +147,8 @@ impl VmMemoryAllocator {
             );
         }
     }
+
+    //#[target_feature(enable = "avx2")]
     pub fn reallocate_light(&mut self, seed: String) {
         if seed != self.vm_memory_seed {
             let mem_init_start = Instant::now();
@@ -179,6 +179,7 @@ impl VmMemory {
         }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn light(key: &[u8]) -> VmMemory {
         VmMemory {
             seed_memory: SeedMemory::new_initialised(key),
@@ -186,9 +187,11 @@ impl VmMemory {
             dataset_memory: RwLock::new(Vec::with_capacity(0)),
         }
     }
+
+    //#[target_feature(enable = "avx2")]
     pub fn full(key: &[u8]) -> VmMemory {
-        let seed_mem = SeedMemory::new_initialised(key);
-        let mem = vec![None; DATASET_ITEM_COUNT];
+        let seed_mem: SeedMemory = SeedMemory::new_initialised(key);
+        let mem: Vec<Option<[u64; 8]>> = vec![None; DATASET_ITEM_COUNT];
         VmMemory {
             seed_memory: seed_mem,
             cache: true,
@@ -196,27 +199,31 @@ impl VmMemory {
         }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn dataset_prefetch(&self, offset: u64) {
-        let item_num = offset / CACHE_LINE_SIZE;
+        let item_num: u64 = offset / CACHE_LINE_SIZE;
         if self.cache {
-            let mem = self.dataset_memory.read().unwrap();
-            let rl_cached = &mem[item_num as usize];
+            let mem: std::sync::RwLockReadGuard<'_, Vec<Option<[u64; 8]>>> =
+                self.dataset_memory.read().unwrap();
+            let rl_cached: &Option<[u64; 8]> = &mem[item_num as usize];
             if let Some(rl) = rl_cached {
-                unsafe{
-                    let raw : *const i8 = std::mem::transmute(rl);
+                unsafe {
+                    let raw: *const i8 = std::mem::transmute(rl);
                     _mm_prefetch(raw, _MM_HINT_NTA);
                 }
             }
         }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn dataset_read(&self, offset: u64, reg: &mut [u64; 8]) {
-        let item_num = offset / CACHE_LINE_SIZE;
+        let item_num: u64 = offset / CACHE_LINE_SIZE;
 
         if self.cache {
             {
-                let mem = self.dataset_memory.read().unwrap();
-                let rl_cached = &mem[item_num as usize];
+                let mem: std::sync::RwLockReadGuard<'_, Vec<Option<[u64; 8]>>> =
+                    self.dataset_memory.read().unwrap();
+                let rl_cached: &Option<[u64; 8]> = &mem[item_num as usize];
                 if let Some(rl) = rl_cached {
                     for i in 0..8 {
                         reg[i] ^= rl[i];
@@ -225,15 +232,16 @@ impl VmMemory {
                 }
             }
             {
-                let rl = init_dataset_item(&self.seed_memory, item_num);
-                let mut mem_mut = self.dataset_memory.write().unwrap();
+                let rl: [u64; 8] = init_dataset_item(&self.seed_memory, item_num);
+                let mut mem_mut: std::sync::RwLockWriteGuard<'_, Vec<Option<[u64; 8]>>> =
+                    self.dataset_memory.write().unwrap();
                 mem_mut[item_num as usize] = Some(rl);
                 for i in 0..8 {
                     reg[i] ^= rl[i];
                 }
             }
         } else {
-            let rl = init_dataset_item(&self.seed_memory, item_num);
+            let rl: [u64; 8] = init_dataset_item(&self.seed_memory, item_num);
             for i in 0..8 {
                 reg[i] ^= rl[i];
             }

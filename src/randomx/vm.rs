@@ -49,25 +49,30 @@ pub struct MemoryRegister {
 }
 
 pub struct Register {
-    pub r: [u64; MAX_REG as usize],
-    pub f: [m128d; MAX_FLOAT_REG as usize],
-    pub e: [m128d; MAX_FLOAT_REG as usize],
-    pub a: [m128d; MAX_FLOAT_REG as usize],
+    pub r: [u64; MAX_REG],
+    pub f: [m128d; MAX_FLOAT_REG],
+    pub e: [m128d; MAX_FLOAT_REG],
+    pub a: [m128d; MAX_FLOAT_REG],
 }
 
 pub fn new_register() -> Register {
     Register {
-        r: [0; MAX_REG as usize],
-        f: [m128d::zero(); MAX_FLOAT_REG as usize],
-        e: [m128d::zero(); MAX_FLOAT_REG as usize],
-        a: [m128d::zero(); MAX_FLOAT_REG as usize],
+        r: [0; MAX_REG],
+        f: [m128d::zero(); MAX_FLOAT_REG],
+        e: [m128d::zero(); MAX_FLOAT_REG],
+        a: [m128d::zero(); MAX_FLOAT_REG],
     }
+}
+
+fn div(num: u32, to: f32) -> u32 {
+    let f: f32 = num as f32 * to;
+    f as u32
 }
 
 impl Register {
     pub fn to_bytes(&self) -> [u8; 256] {
-        let mut bytes = [0; 256];
-        let mut offset = 0;
+        let mut bytes: [u8; 256] = [0; 256];
+        let mut offset: usize = 0;
         for i in 0..MAX_REG {
             Register::copy_into_le(&mut bytes, offset, self.r[i]);
             offset += 1;
@@ -101,7 +106,7 @@ impl Register {
     }
 
     fn copy_into_le(bytes: &mut [u8; 256], offset: usize, u: u64) {
-        let reg_bytes = u.to_le_bytes();
+        let reg_bytes: [u8; 8] = u.to_le_bytes();
         for k in 0..8 {
             bytes[offset * 8 + k] = reg_bytes[k];
         }
@@ -124,6 +129,7 @@ pub struct Vm {
 }
 
 impl Vm {
+    //#[target_feature(enable = "avx2")]
     pub fn init_vm(&mut self, prog: &Program) {
         self.reg.a[0] = m128d::from_u64(
             small_positive_float_bit(prog.entropy[1]),
@@ -165,38 +171,41 @@ impl Vm {
         }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn init_scratchpad(&mut self, seed: &[m128i; 4]) -> [m128i; 4] {
         fill_aes_1rx4_u64(seed, &mut self.scratchpad)
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn calculate_hash(&mut self, input: &[u8]) -> Hash {
-        let hash = blake2b(input);
-        let seed = hash_to_m128i_array(&hash);
+        let hash: Hash = blake2b(input);
+        let seed: [m128i; 4] = hash_to_m128i_array(&hash);
 
-        let mut tmp_hash = self.init_scratchpad(&seed);
+        let mut tmp_hash: [m128i; 4] = self.init_scratchpad(&seed);
         self.reset_rounding_mode();
 
         for _ in 0..(RANDOMX_PROGRAM_COUNT - 1) {
             self.run(&tmp_hash);
-            let blake_result = blake2b(&self.reg.to_bytes());
+            let blake_result: Hash = blake2b(&self.reg.to_bytes());
             tmp_hash = hash_to_m128i_array(&blake_result);
         }
 
         self.run(&tmp_hash);
-        let final_hash = hash_aes_1rx4(&self.scratchpad);
+        let final_hash: [m128i; 4] = hash_aes_1rx4(&self.scratchpad);
         self.reg.a[0] = final_hash[0].as_m128d();
         self.reg.a[1] = final_hash[1].as_m128d();
         self.reg.a[2] = final_hash[2].as_m128d();
         self.reg.a[3] = final_hash[3].as_m128d();
 
-        let mut params = Params::new();
+        let mut params: Params = Params::new();
         params.hash_length(RANDOMX_HASH_SIZE);
         params.hash(&self.reg.to_bytes())
     }
 
     /// Runs one round
+    //#[target_feature(enable = "avx2")]
     pub fn run(&mut self, seed: &[m128i; 4]) {
-        let prog = Program::from_bytes(gen_program_aes_4rx4(seed, 136));
+        let prog: Program = Program::from_bytes(gen_program_aes_4rx4(seed, 136));
 
         self.init_vm(&prog);
 
@@ -204,14 +213,17 @@ impl Vm {
         let mut sp_addr_1: u32 = self.mem_reg.ma as u32;
 
         for _ in 0..RANDOMX_PROGRAM_ITERATIONS {
-            let sp_mix = self.reg.r[self.config.read_reg[0]] ^ self.reg.r[self.config.read_reg[1]];
+            let sp_mix: u64 =
+                self.reg.r[self.config.read_reg[0]] ^ self.reg.r[self.config.read_reg[1]];
 
             sp_addr_0 ^= sp_mix as u32;
             sp_addr_0 &= SCRATCHPAD_L3_MASK_U32;
-            sp_addr_0 /= 8;
+            //sp_addr_0 /= 8;
+            sp_addr_0 = div(sp_addr_0, 0.125);
             sp_addr_1 ^= (sp_mix >> 32) as u32;
             sp_addr_1 &= SCRATCHPAD_L3_MASK_U32;
-            sp_addr_1 /= 8;
+            //sp_addr_1 /= 8;
+            sp_addr_1 = div(sp_addr_1, 0.125);
 
             for i in 0..MAX_REG {
                 self.reg.r[i] ^= self.scratchpad[sp_addr_0 as usize + i];
@@ -229,7 +241,7 @@ impl Vm {
 
             self.pc = 0;
             while self.pc < RANDOMX_PROGRAM_SIZE {
-                let instr = &prog.program[self.pc as usize];
+                let instr: &Instr = &prog.program[self.pc as usize];
                 instr.execute(self);
                 self.pc += 1;
             }
@@ -254,7 +266,7 @@ impl Vm {
 
             for i in 0..MAX_FLOAT_REG {
                 let (u1, u0) = self.reg.f[i].as_u64();
-                let ix = sp_addr_0 as usize + 2 * i;
+                let ix: usize = sp_addr_0 as usize + 2 * i;
                 self.scratchpad[ix] = u0;
                 self.scratchpad[ix + 1] = u1;
             }
@@ -263,22 +275,25 @@ impl Vm {
         }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn reset_rounding_mode(&mut self) {
         unsafe {
             _mm_setcsr(MXCSR_DEFAULT);
         }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn set_rounding_mode(&mut self, mode: u32) {
         unsafe { _mm_setcsr(MXCSR_DEFAULT | (mode << 13)) }
     }
 
+    //#[target_feature(enable = "avx2")]
     pub fn get_rounding_mode(&self) -> u32 {
         unsafe { (_mm_getcsr() >> 13) & 3 }
     }
 
     //f...
-
+    //#[target_feature(enable = "avx2")]
     pub fn exec_fswap_r(&mut self, instr: &Instr) {
         let v_dst = self.read_float_reg(&instr.dst);
         self.write_float_reg(&instr.dst, v_dst.shuffle_1(&v_dst));
@@ -449,10 +464,10 @@ impl Vm {
     }
 
     //c..
-
+    //#[target_feature(enable = "avx2")]
     pub fn exec_cfround(&mut self, instr: &Instr) {
-        let v_src = self.read_r(&instr.src);
-        let mode = (v_src.rotate_right(instr.imm.unwrap() as u32) % 4) as u32;
+        let v_src: u64 = self.read_r(&instr.src);
+        let mode: u32 = (v_src.rotate_right(instr.imm.unwrap() as u32) % 4) as u32;
         self.set_rounding_mode(mode);
     }
 
@@ -542,7 +557,7 @@ impl Vm {
         }
     }
     fn scratchpad_src_ix(&self, instr: &Instr) -> usize {
-        let imm = u64_from_i32_imm(instr.imm.unwrap());
+        let imm: u64 = u64_from_i32_imm(instr.imm.unwrap());
         let addr: usize = match &instr.src {
             Store::L1(d) => (self.read_r(d).wrapping_add(imm)) & SCRATCHPAD_L1_MASK,
             Store::L2(d) => (self.read_r(d).wrapping_add(imm)) & SCRATCHPAD_L2_MASK,
@@ -555,7 +570,7 @@ impl Vm {
     }
 
     fn scratchpad_dst_ix(&self, instr: &Instr) -> usize {
-        let imm = u64_from_i32_imm(instr.imm.unwrap());
+        let imm: u64 = u64_from_i32_imm(instr.imm.unwrap());
         let addr: usize = match &instr.dst {
             Store::L1(d) => (self.read_r(d).wrapping_add(imm)) & SCRATCHPAD_L1_MASK,
             Store::L2(d) => (self.read_r(d).wrapping_add(imm)) & SCRATCHPAD_L2_MASK,
@@ -568,18 +583,18 @@ impl Vm {
     }
 
     fn mask_register_exponent_mantissa(&self, v: m128d) -> m128d {
-        let mantissa_mask = m128d::from_u64(DYNAMIC_MANTISSA_MASK, DYNAMIC_MANTISSA_MASK);
-        let exponent_mask = m128d::from_u64(self.config.e_mask[1], self.config.e_mask[0]);
+        let mantissa_mask: m128d = m128d::from_u64(DYNAMIC_MANTISSA_MASK, DYNAMIC_MANTISSA_MASK);
+        let exponent_mask: m128d = m128d::from_u64(self.config.e_mask[1], self.config.e_mask[0]);
         (v & mantissa_mask) | exponent_mask
     }
 }
 
 pub fn hash_to_m128i_array(hash: &Hash) -> [m128i; 4] {
-    let bytes = hash.as_bytes();
-    let i1 = m128i::from_u8(&bytes[0..16]);
-    let i2 = m128i::from_u8(&bytes[16..32]);
-    let i3 = m128i::from_u8(&bytes[32..48]);
-    let i4 = m128i::from_u8(&bytes[48..64]);
+    let bytes: &[u8] = hash.as_bytes();
+    let i1: m128i = m128i::from_u8(&bytes[0..16]);
+    let i2: m128i = m128i::from_u8(&bytes[16..32]);
+    let i3: m128i = m128i::from_u8(&bytes[32..48]);
+    let i4: m128i = m128i::from_u8(&bytes[48..64]);
     [i1, i2, i3, i4]
 }
 
@@ -601,22 +616,25 @@ pub fn is_zero_or_power_of_2(imm: u64) -> bool {
     imm & imm.wrapping_sub(1) == 0
 }
 
+//#[target_feature(enable = "avx2")]
 fn small_positive_float_bit(entropy: u64) -> u64 {
-    let mut exponent = entropy >> 59; //0..31
-    let mantissa = entropy & MANTISSA_MASK;
+    let mut exponent: u64 = entropy >> 59; //0..31
+    let mantissa: u64 = entropy & MANTISSA_MASK;
     exponent += EXPONENT_BIAS;
     exponent &= EXPONENT_MASK;
     exponent <<= MANTISSA_SIZE;
     exponent | mantissa
 }
 
+//#[target_feature(enable = "avx2")]
 fn float_mask(entropy: u64) -> u64 {
-    let mask22bit = (1 << 22) - 1;
+    let mask22bit: u64 = (1 << 22) - 1;
     entropy & mask22bit | static_exponent(entropy)
 }
 
+//#[target_feature(enable = "avx2")]
 fn static_exponent(entropy: u64) -> u64 {
-    let mut exponent = EXPONENT_BITS;
+    let mut exponent: u64 = EXPONENT_BITS;
     exponent |= (entropy >> (64 - STATIC_EXPONENT_BITS)) << DYNAMIC_EXPONENT_BITS;
     exponent << MANTISSA_SIZE
 }
