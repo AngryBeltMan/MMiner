@@ -11,14 +11,14 @@ use std::{
     sync::Arc,
 };
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Login {
     pub login: String,
     pub pass: String,
     pub agent: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Request<'a, T>
 where
     T: TraitDeserialize<'a> + TraitSerialize + std::fmt::Debug,
@@ -45,13 +45,16 @@ pub enum MessageType {
     Submit(Share),
     KeepAlive(KeepAlive),
 }
+
+//#[target_feature(enable = "avx2")]
 pub fn job_listener(
     mut stream_r: BufReader<TcpStream>,
     sender: tokio::sync::mpsc::UnboundedSender<(block::Block, Arc<VmMemory>)>,
 ) {
-    let mut vm_mem_alloc = randomx::memory::VmMemoryAllocator::initial();
+    let mut vm_mem_alloc: randomx::memory::VmMemoryAllocator =
+        randomx::memory::VmMemoryAllocator::initial();
     loop {
-        let mut buffer = String::new();
+        let mut buffer: String = String::new();
         loop {
             match stream_r.read_line(&mut buffer) {
                 Ok(_o) => {

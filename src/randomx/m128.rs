@@ -41,8 +41,8 @@ impl m128i {
     }
     pub fn as_i64(&self) -> (i64, i64) {
         unsafe {
-            let p1 = _mm_extract_epi64(self.0, 1);
-            let p2 = _mm_extract_epi64(self.0, 0);
+            let p1: i64 = _mm_extract_epi64(self.0, 1);
+            let p2: i64 = _mm_extract_epi64(self.0, 0);
             (p1, p2)
         }
     }

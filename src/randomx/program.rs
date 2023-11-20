@@ -43,7 +43,7 @@ pub enum Opcode {
     ISTORE = 0x100,
 }
 
-#[derive(Debug,Display, PartialEq)]
+#[derive(Debug, Display, PartialEq)]
 pub enum Store {
     NONE,
     //registers
@@ -173,6 +173,7 @@ pub fn new_lcache_instr(
 }
 
 impl Instr {
+    //#[target_feature(enable = "avx2")]
     pub fn execute(&self, vm: &mut Vm) {
         (self.effect)(vm, self);
     }
@@ -248,6 +249,7 @@ pub struct Program {
 }
 
 impl Program {
+    //#[target_feature(enable = "avx2")]
     pub fn from_bytes(bytes: Vec<m128i>) -> Program {
         let mut entropy = Vec::with_capacity(16);
         let mut program = Vec::with_capacity((bytes.len() - 8) * 2);
@@ -285,6 +287,7 @@ impl fmt::Display for Program {
 }
 
 #[allow(overflowing_literals)]
+//#[target_feature(enable = "avx2")]
 pub fn decode_instruction(bytes: i64, i: i32, register_usage: &mut [i32; MAX_REG]) -> Instr {
     let op = bytes & 0xFF;
     let dst = ((bytes & 0xFF00) >> 8) as usize;
